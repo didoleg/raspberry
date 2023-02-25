@@ -1,3 +1,10 @@
 https://www.raspberrypi.com/documentation/computers/camera_software.html
 https://robot-on.ru/articles/raspberry-pi-rabota-s-kameroi?ysclid=lejlpz7ood68111453
 https://codius.ru/articles/Raspberry_Pi_3_%D0%9A%D0%B0%D0%BC%D0%B5%D1%80%D0%B0_%D1%87%D0%B0%D1%81%D1%82%D1%8C_1
+https://systop.ru/linux/38-raspberry-pi-podklyuchenie-i-rabota-s-csi-kameroy.html
+
+
+https://github.com/raspberrypi/picamera2?ysclid=lejpiy7b7i763307202
+
+
+https://copter-space.gitbook.io/uchebnik-mashinnoe-zrenie-tom-2/razdel-3/poluchenie-i-obrabotka-izobrazheniya-s-kamery-raspberry-pi
