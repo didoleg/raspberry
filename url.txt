@@ -8,3 +8,7 @@ https://github.com/raspberrypi/picamera2?ysclid=lejpiy7b7i763307202
 
 
 https://copter-space.gitbook.io/uchebnik-mashinnoe-zrenie-tom-2/razdel-3/poluchenie-i-obrabotka-izobrazheniya-s-kamery-raspberry-pi
+
+трансляция видео
+
+https://habr.com/ru/post/252587/

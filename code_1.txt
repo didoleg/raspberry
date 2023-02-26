@@ -1,0 +1,577 @@
+ # This Python file uses the following encoding: utf-8
+import os, sys
+# rwpbb.ru zero
+# Python 3
+import RPi.GPIO as gp
+#import serial
+import time
+import picamera
+import numpy as np
+from tkinter import *
+from picamera.array import PiRGBArray
+from PIL import Image
+from PIL import ImageTk
+#from tkinter import filedialog
+import cv2
+
+#assert float(cv2.__version__.rsplit('.', 1)[0]) >= 3, 'OpenCV version 3 or newer required.'
+
+
+fr=0 # номер снимка в текущем сеансе
+frs=0 # номер стереоснимка в текущем сеансе
+fram = 10
+fcam0=295 # фокусное расстояние в пикселях
+fcams=305 # фокусное расстояние в стерео режиме
+
+# fcam0 Фокусное расстояние в пикселях. Т.е. если у нас  
+# рыбий глаз с фокусным расстоянием 18 мм, матрица размером 36х24 мм 
+# и кадр 640х480 пикселей, то фокусное расстояние будет равно 320
+# угол обзора и фокусное расстояние в мм можно получить командой
+# finfo=cv2.calibrationMatrixValues(K,(640,480),36,24)
+z1=100
+xt=0
+var = 256 # длительность выдержки
+flag =1 # если 0 то включен предпросмотр, блокируются другие включения 
+flagdp=0 # если 1 то включена коррекция
+w, h = 2592, 1944
+gp.setmode(gp.BCM)
+gp.setup(18, gp.IN, pull_up_down = gp.PUD_UP)
+gp.setup(19, gp.OUT)
+gp.setup(21, gp.OUT)
+gp.output(19, False)
+gp.output(21, False)
+# Присвоение очередного номера новым снимкам
+fn=0
+namef="/home/pi/fotopicam/foto1.txt"
+try:
+    f = open(namef, 'r')
+    fs = f.read()
+    print(fs)
+    f.close()
+except IOError:
+    ff = open(namef, 'w')
+    fs ="0"
+    ff.write(fs)
+    ff.close()
+
+f = open(namef, 'r')
+fs = f.read()
+f.close()
+fn=int(fs)
+ff = open(namef, 'w')
+fn=fn+1
+ffs=str(fn)
+ff.write(ffs)   
+ff.close()
+
+
+
+# Предпросмотр с использованием CV, если flagdp=1, то с коррекцией  
+#За основу взят пример http://www.pyimagesearch.com/2016/05/23/opencv-with-tkinter/
+#Для коррекции искажений использован пример https://github.com/smidm/opencv-python-fisheye-example
+def sinxv1dp():
+    global flag, image0
+        
+    if flag==0:
+        sels()
+    else:
+        flag=0
+        panelB = None
+        panelA = None       
+        camera.resolution = (640, 480)
+        camsetcv()      
+        rawCapture = PiRGBArray(camera, size=(640, 480))
+        time.sleep(0.1)
+        for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
+            image0 = frame.array
+            if flagdp.get() == 1:
+                image0 = cv2.fisheye.undistortImage(image0, K, D=D, Knew=Knew)
+            image = cv2.cvtColor(image0, cv2.COLOR_BGR2RGB)
+            image = Image.fromarray(image)
+            image = ImageTk.PhotoImage(image)
+
+            if panelA is None :
+                panelA = Label(image=image)
+                panelA.image = image
+                panelA.grid(row=0,column=0,rowspan=24)                      
+            else:
+                panelA.configure(image=image)
+                panelA.image = image
+            
+            rawCapture.truncate(0)
+            root.update()
+            if flag == 1:
+                break
+
+        panelA.grid_forget()
+        panelB = None
+        panelA = None
+        flag=1
+
+
+
+def g19():
+    if CheckVar4.get() == 1:
+        gp.output(19, True)
+    else:
+        gp.output(19, False)
+def g21():
+    if CheckVar5.get() == 1:
+        gp.output(21, True)
+    else:
+        gp.output(21, False)    
+
+# Пересчет матрицы при масштабировании
+def camz(z):
+    global fcam, K, D, Knew, z1 
+    z1=float(z)
+    cx=320-6*xt*(1-z1/100)
+    cy=240
+    fcam=100*fcam0/(z1+0)
+    fsc=0.85 +(100-z1)/(500-2*z1)
+    K = np.array([[  fcam,     0.  ,  cx],
+                  [    0.  ,   fcam,   cy],
+                  [    0.  ,     0.  ,     1.  ]])
+
+    D = np.array([0., 0., 0., 0.])
+
+    Knew = K.copy()
+    Knew[(0,1), (0,1)] = fsc * Knew[(0,1), (0,1)]
+    x=(1-z1/100)/2 +xt*(1-z1/100)/100
+    y=(1-z1/100)/2
+    w=z1/100
+    h=z1/100
+    camera.zoom = (x,y,w,h)
+    finfo=cv2.calibrationMatrixValues(K,(640,480),36,24)
+    print(finfo)
+    print(z1,x,y,w,h)
+
+# Пересчет матрицы при сдвиге
+def tilt (x0):
+    global xt,fcam, K, D, Knew
+    xt=int(x0)
+    cx=320-6*xt*(1-z1/100)
+    cy=240
+    fcam=100*fcam0/(z1+00)
+    fsc=0.85 +(100-z1)/(500-2*z1)
+    K = np.array([[  fcam,     0.  ,  cx],
+                  [    0.  ,   fcam,   cy],
+                  [    0.  ,     0.  ,     1.  ]])
+
+    D = np.array([0., 0., 0., 0.])
+
+    Knew = K.copy()
+    Knew[(0,1), (0,1)] = fsc * Knew[(0,1), (0,1)]
+    x=(1-z1/100)/2 +xt*(1-z1/100)/100
+    y=(1-z1/100)/2
+    w=z1/100
+    h=z1/100
+    camera.zoom = (x,y,w,h)
+
+# Параметры баланса белого 
+def swb():
+    camera.awb_mode = Spinboxwb.get()
+    r=int(Spinboxwbr.get())/10
+    b=int(Spinboxwbb.get())/10
+    camera.awb_gains =(r,b)
+
+# Параметры баланса белого при  awb_mode = 'off'
+def wbr():
+    r=int(Spinboxwbr.get())/10
+    b=int(Spinboxwbb.get())/10
+    camera.awb_gains =(r,b)
+
+def wbb():
+    b=int(Spinboxwbb.get())/10
+    r=int(Spinboxwbr.get())/10
+    camera.awb_gains =(r,b)
+
+def iso():
+    iso=int(Spinbox2.get())
+    camera.iso = iso
+    print(camera.iso)
+
+# Параметры камеры при CV
+def camsetcv():
+    global var
+    #camera.hflip = 1
+    camera.rotation = 0
+    fram=int(Spinbox1.get())
+    camera.framerate = fram
+    iso=int(Spinbox2.get())
+    expcomp=int(Spinbox3.get())
+    camera.exposure_compensation = expcomp
+    contr=int(Spinbox5.get())
+    camera.contrast = contr
+    
+    camera.awb_mode = Spinboxwb.get()
+    r=int(Spinboxwbr.get())/10
+    b=int(Spinboxwbb.get())/10
+    camera.awb_gains =(r,b)
+    
+    if CheckVar2.get() == 1:
+        camera.color_effects = (128,128)
+    else:
+        camera.color_effects = None
+    camera.drc_strength = Spinbox4.get()
+    camera.contrast = contr
+    
+    if exp.get() == "auto":
+        camera.iso = 0
+        camera.shutter_speed = 0
+        camera.exposure_mode = "auto"
+        Spinbox2.delete(0,3)
+        Spinbox2.insert(0,'0')
+
+    elif exp.get() == "off":
+        camera.shutter_speed = var
+        camera.exposure_mode = "auto"
+        time.sleep(0.5)
+        camera.exposure_mode = "off"
+
+    else:           
+        camera.iso = iso
+        camera.shutter_speed = var
+        camera.exposure_mode = "auto"
+    time.sleep(0.5)
+    var=int(camera.exposure_speed)
+    label.config(text= "1/" + str(int(1000000/var))) 
+
+# Параметры камеры при HDMI. При разрешении большем 1296 частота кадров ограничена 15   
+def camset():
+    if Spinbox6.get() == "2592x1944":
+        w, h = 2592, 1944
+    elif Spinbox6.get() == "1620x1232":
+        w, h = 1620, 1232
+    elif Spinbox6.get() == "1296x972":
+        w, h = 1296, 972
+    else:       
+        w, h = 640, 480
+
+    camera.resolution = (w, h)
+    #camera.hflip = 1
+    camera.rotation = 0
+    global fram, var
+    fram=int(Spinbox1.get())
+    iso=int(Spinbox2.get())
+    expcomp=int(Spinbox3.get())
+    contr=int(Spinbox5.get())
+    camera.framerate = fram 
+    camera.preview_fullscreen=CheckVar1.get()
+    #camera.preview_window = (0,0,1600,1200)
+    camera.preview_window = (0,0,1024,768)
+    camera.awb_mode = Spinboxwb.get()
+    r=int(Spinboxwbr.get())/10
+    b=int(Spinboxwbb.get())/10
+    camera.awb_gains =(r,b)
+    if CheckVar2.get() == 1:
+        camera.color_effects = (128,128)
+    else:
+        camera.color_effects = None
+    camera.drc_strength = Spinbox4.get()
+    camera.exposure_compensation = expcomp
+    #camera.brightness = 40
+    camera.contrast = contr
+    if exp.get() == "auto":
+        camera.iso = 0
+        camera.shutter_speed = 0
+        camera.exposure_mode = "auto"
+        Spinbox2.delete(0,3)
+        Spinbox2.insert(0,'0')
+
+    elif exp.get() == "off":
+        camera.shutter_speed = var
+        camera.exposure_mode = "auto"
+        time.sleep(0.5)
+        camera.exposure_mode = "off"
+
+    else:           
+        camera.iso = iso
+        camera.shutter_speed = var
+        camera.exposure_mode = "auto"
+    time.sleep(0.5)
+    var=int(camera.exposure_speed)
+    label.config(text= "1/" + str(int(1000000/var)))
+
+# Выдержка  
+def selp():
+    global var
+    var=int(var*2)
+    camera.shutter_speed = var
+    # Проверяем, что частота кадров позволяет увеличить выдержку
+    time.sleep(0.5)
+    var=int(camera.exposure_speed)
+    label.config(text= "1/" + str(int(1000000/var)))
+
+def seln():
+    global var
+    var=int(var/2)
+    label.config(text= "1/" + str(int(1000000/var)))
+    camera.shutter_speed = var
+
+# Снимок
+def selcam1():
+    global flag,fr
+
+    if flag==0:
+        sels()
+    else:
+        fr=fr+1
+        #camera.crop = (0,0,1,1)
+        camset()
+        camera.exif_tags['IFD0.Artist'] = "RWPBB"
+        camera.exif_tags['EXIF.FocalLength'] = '50'
+        camera.capture("/home/pi/fotopicam/"+ffs+"pi%03d.jpg" % fr)
+
+# Снимок 2
+def selcam2():
+    global flag,fr
+
+    if flag==0:
+        sels()
+    else:
+        fr=fr+1
+        if Spinbox6.get() == "2592x1944":
+            w, h = 2592, 1944
+        elif Spinbox6.get() == "1620x1232":
+            w, h = 1620, 1232
+        elif Spinbox6.get() == "1296x972":
+            w, h = 1296, 972
+        else:       
+            w, h = 640, 480
+        camsetcv()
+        camera.resolution = (w, h)
+        rawCapture = PiRGBArray(camera, size=(w, h)) 
+        time.sleep(0.1)      
+        camera.capture(rawCapture, format="bgr")
+        image = rawCapture.array
+        if flagdp.get() == 1:
+            fcam1=w*fcam0/640
+            cx=w/2-6*xt*(1-z1/100)
+            cy=h/2
+            fcam=100*fcam1/(z1+00)
+            fsc=0.85 +(100-z1)/(500-2*z1)
+            K = np.array([[  fcam,     0.  ,  cx],
+                          [    0.  ,   fcam,   cy],
+                          [    0.  ,     0.  ,     1.  ]])
+
+            D = np.array([0., 0., 0., 0.])
+
+            Knew = K.copy()
+            Knew[(0,1), (0,1)] = fsc * Knew[(0,1), (0,1)]
+            image = cv2.fisheye.undistortImage(image, K, D=D, Knew=Knew)
+        cv2.imwrite("/home/pi/fotopicam/"+ffs+"pifcv%03d.jpg" % fr, image)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = Image.fromarray(image)
+        image = ImageTk.PhotoImage(image)
+        flag = 0
+        panelA = None 
+        if panelA is None:
+            panelA = Label(image=image)
+            panelA.image = image
+            panelA.grid(row=0,column=0,rowspan=24)                      
+        else:
+            panelA.configure(image=image)
+            panelA.image = image        
+        rawCapture.truncate(0)
+        root.update()
+        
+        time.sleep(10)
+        panelA.grid_forget()
+        panelB = None
+        panelA = None
+        flag=1
+        
+# Компенсация экспозиции
+def expc():
+    expcomp=int(Spinbox3.get())
+    camera.exposure_compensation = expcomp
+
+# Контраст  
+def contr():
+    contr=int(Spinbox5.get())
+    camera.contrast = contr
+
+# Индикация текущей выдержки в автоматическом режиме    
+def info(): 
+    label.config(text= "1/" + str(int(1000000/camera.exposure_speed)))  
+    print(camera.iso)
+
+# Вычисление и индикация коэффициента локального контраста
+def infof():    
+    gray = cv2.cvtColor(image0, cv2.COLOR_BGR2GRAY)
+    fm = cv2.Laplacian(gray, cv2.CV_64F).var()  
+    labelf.config(text= str(int(fm)))
+
+
+
+# Остановка проедпросмотра
+def sels(): 
+    global flag
+    flag = 1
+    if camera.preview:
+        camera.stop_preview()
+
+# Установка параметров и включение предпросмотра через HDMI 
+def preview():
+    global flag 
+    if flag==0:
+        sels()
+    else:
+        camset()
+        #camera.crop = (0,0,1,1)
+        camera.start_preview()
+        flag = 0
+def piexit():
+    camera.close()
+    gp.cleanup()
+    exit()
+# Реакция на кнопку 18
+def finFunction(can):   
+   
+    sels()
+    gp.output(21, True)
+    time.sleep(0.2)
+    gp.output(21, False)
+    time.sleep(3.2)
+    selcam2()
+    
+    
+gp.add_event_detect(18, gp.FALLING, callback=finFunction, bouncetime=1000)    
+with picamera.PiCamera() as camera: 
+    root = Tk()
+    root.title("PiCamera")
+    root.wm_geometry("1280x760+0+0")
+    panelA = None
+    panelB = None
+    exp = Spinbox(values =('auto','P','off'),width =4, font=('monospace',16))
+    exp.grid(row=0,column=2, sticky='w')
+    Spinbox6 = Spinbox(values =('1296x972','2592x1944','1620x1232','640x480'),width =9, font=('monospace',16))
+    Spinbox6.grid(row=0,column=2, sticky='e', columnspan=2)
+    Spinboxwb = Spinbox(values =('auto','sunlight','cloudy','tungsten','shade','off'),width =8, font=('monospace',14), command=swb)
+    Spinboxwb.grid(row=2,column=2,columnspan=2)
+    Spinboxwbr = Spinbox(from_=5, to=29,width =2, font=('monospace',16), command=wbr)
+    Spinboxwbr.grid(row=2,column=2, sticky='w')
+    Spinboxwbr.delete(0)
+    Spinboxwbr.insert(0,10)
+    Spinboxwbb = Spinbox(from_=5, to=29,width =2, font=('monospace',16), command=wbb)
+    Spinboxwbb.grid(row=2,column=3, sticky='e')
+    Spinboxwbb.delete(0)
+    Spinboxwbb.insert(0,10)
+
+    CheckVar1 = IntVar()
+    CheckVar1.set(0)
+    C1 = Checkbutton(text = "full", variable = CheckVar1, \
+                 onvalue = 1, offvalue = 0, height=1, \
+                 width =4, font=('monospace',16))
+    C1.grid(row=3,column=2,columnspan=2)
+    
+    CheckVar2 = IntVar()
+    CheckVar2.set(0)    
+    C2 = Checkbutton(text = "B&W", variable = CheckVar2, \
+                 onvalue = 1, offvalue = 0, height=1, \
+                 width = 3, font=('monospace',16))
+    C2.grid(row=3,column=2, sticky='w')
+    
+    flagdp = IntVar()
+    flagdp.set(0)   
+    C3 = Checkbutton(text = "DP", variable = flagdp, \
+                 onvalue = 1, offvalue = 0, height=1, \
+                 width =2, font=('monospace',16))
+    C3.grid(row=3,column=3, sticky='e')
+
+    button = Button(text="shutter_speed", command=info, font=('monospace',16))
+    button.grid(row=4,column=2,columnspan=2)
+
+    buttonp = Button(text="+", command=selp, font=('monospace',16), width = 2)
+    buttonp.grid(row=5,column=2, sticky='w',columnspan=2)
+
+    buttonn = Button(text="-", command=seln, font=('monospace',16), width = 2)
+    buttonn.grid(row=5,column=2, sticky='e',columnspan=2)
+
+    label = Label(text= "1/" + str(var), font=('monospace',16))
+    label.grid(row=5,column=2,columnspan=2)
+
+    button = Button(text="preview", command=preview, font=('monospace',16), height=1, width = 6)
+    button.grid(row=8,column=2, sticky='w')
+    buttonpstop = Button(text="Stop", command=sels, font=('monospace',16), height=1, width = 6)
+    buttonpstop.grid(row=8,column=3, sticky='e')
+    buttonpstopl = Button(text="Stop", command=sels, font=('monospace',16), height=25, width = 78)
+    buttonpstopl.grid(row=1,column=0, sticky='w', rowspan=23)
+    scalezoom = Scale(root, from_=20, to=100, orient=HORIZONTAL, resolution=5,  command=camz)
+    scalezoom.grid(row=9,column=2, columnspan=2, sticky='e')
+    scaletilt = Scale(root, from_=-50, to=50, orient=HORIZONTAL, resolution=1, command=tilt)
+    scaletilt.grid(row=10,column=2, columnspan=2)
+    scalezoom.set(100)
+    labelzoom = Label(text= "Zoom", font=('monospace',16))
+    labelzoom.grid(row=9,column=2,sticky='w')
+    labelzooml = Label(text= "L", font=('monospace',16))
+    labelzooml.grid(row=10,column=2,sticky='w')
+    labelzoomr = Label(text= "R", font=('monospace',16))
+    labelzoomr.grid(row=10,column=3,sticky='e')
+   
+    
+    buttoncv1 = Button(text="CV", command=sinxv1dp, font=('monospace',16), height=1, width = 2)
+    buttoncv1.grid(row=13,column=2, sticky='w')
+   
+    
+    Spinbox1 = Spinbox(from_=3, to=32,width =3, font=('monospace',16))
+    Spinbox1.grid(row=15,column=3)
+    Spinbox1.delete(0)
+    Spinbox1.insert(0,12)
+    labelframe = Label( root, text="Frame", font=('monospace',16))
+    labelframe.grid(row=15,column=2)
+    
+    Spinbox2 = Spinbox(values =('0','100','200','400','800'),width =4, font=('monospace',16), command=iso)
+    Spinbox2.grid(row=16,column=3)
+    labeliso = Label( root, text="ISO", font=('monospace',16))
+    labeliso.grid(row=16,column=2) 
+    
+    Spinbox3 = Spinbox(from_=-25, to=25,width =4, font=('monospace',16), command=expc)
+    Spinbox3.grid(row=17,column=3)
+    Spinbox3.delete(0,"end")
+    Spinbox3.insert(0, 0)
+    labelexp = Label( root, text="EXP", font=('monospace',16))
+    labelexp.grid(row=17,column=2)
+    
+    Spinbox4 = Spinbox(values =('high','low','off'),width =4, font=('monospace',16))
+    Spinbox4.grid(row=19,column=3)
+    labeldrc = Label( root, text="DRC", font=('monospace',16))
+    labeldrc.grid(row=19,column=2)  
+    
+    Spinbox5 = Spinbox(from_=-25, to=25,width =4, font=('monospace',16), command=contr)
+    Spinbox5.grid(row=18,column=3)
+    Spinbox5.delete(0,"end")
+    Spinbox5.insert(0,-1)
+    labelcontr = Label( root, text="Contr", font=('monospace',16))
+    labelcontr.grid(row=18,column=2) 
+    CheckVar4 = IntVar()
+    CheckVar4.set(0)
+    C4 = Checkbutton(text = "19",variable = CheckVar4, command=g19,\
+                 onvalue = 1, offvalue = 0, height=1, \
+                 width =2, font=('monospace',16))
+    C4.grid(row=20,column=3, sticky='e') 
+    CheckVar5 = IntVar()
+    CheckVar5.set(0)
+    C5 = Checkbutton(text = "21", variable = CheckVar5, command=g21,\
+                 onvalue = 1, offvalue = 0, height=1, \
+                 width =2, font=('monospace',16))
+    C5.grid(row=20,column=2, sticky='w') 
+   
+    labelf = Label(text= "0", font=('monospace',16))
+    labelf.grid(row=22,column=2,columnspan=2)
+    buttoncani = Button(text="LC", command=infof, font=('monospace',16),width =3)
+    buttoncani.grid(row=22,column=2, sticky='w')
+    buttoncanf4 = Button(text="exit", command=piexit, font=('monospace',16),width =3)
+    buttoncanf4.grid(row=22,column=3, sticky='e')
+   
+
+    buttonpcam = Button(text="F1", command=selcam1, font=('monospace',16), height=1, width = 2)
+    buttonpcam.grid(row=13,column=2, columnspan=2)
+    buttonpcam2 = Button(text="F2", command=selcam2, font=('monospace',16), height=1, width = 2)
+    buttonpcam2.grid(row=13,column=3, sticky='e')
+    root.mainloop()
+
+
+camera.close()
+gp.cleanup()
