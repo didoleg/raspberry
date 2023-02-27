@@ -12,3 +12,20 @@ https://copter-space.gitbook.io/uchebnik-mashinnoe-zrenie-tom-2/razdel-3/poluche
 трансляция видео
 
 https://habr.com/ru/post/252587/
+
+https://gadgetshelp.com/tvorcheskii/kak-v-priamom-efire-na-youtube-s-raspberry-pi/
+
+https://vanyukov.su/tech/raspberry-pi-video/
+
+https://dzen.ru/media/id/5defebe43d008800b109142c/potokovoe-video-s-raspberry-pi-5e78fb5a9517321785213dd6
+
+
+vlc
+https://wtware.ru/docs5/vlc.html
+
+
+
+
+тортик
+https://www.youtube.com/shorts/Pg-7pHeKjl4
+
